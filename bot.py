@@ -1,6 +1,7 @@
 import os
 import sys
 import uuid
+import asyncio
 
 
 def ensure_project_python():
@@ -492,14 +493,28 @@ print("Bot running...")
 print("The bot is now listening for video uploads and channel-send actions.")
 
 
+async def run_bot():
+    """Run the bot with manual async lifecycle management for Python 3.14 compatibility."""
+    await app.initialize()
+    await app.start()
+    
+    # Start polling
+    await app.updater.start_polling(
+        poll_interval=1.0,
+        timeout=30,
+        bootstrap_retries=1,
+        drop_pending_updates=True,
+    )
+    
+    # Keep the bot running until interrupted
+    print("Bot is running. Press Ctrl+C to stop.")
+    while True:
+        await asyncio.sleep(3600)
+
+
 def main():
     try:
-        app.run_polling(
-            poll_interval=1.0,
-            timeout=30,
-            bootstrap_retries=1,
-            drop_pending_updates=True,
-        )
+        asyncio.run(run_bot())
     except KeyboardInterrupt:
         print("\nStopping bot...")
         raise SystemExit(0)
