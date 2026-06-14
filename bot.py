@@ -1,4 +1,7 @@
-import os
+
+# Let's create the complete fixed bot.py file
+
+fixed_code = '''import os
 import sys
 import uuid
 import asyncio
@@ -266,16 +269,16 @@ def format_movie_caption(movie, detailed=False):
     lines.append("")  # spacer
     lines.append(f"{overview[:500]}{'...' if len(overview) > 500 else ''}")
     
-    return "\n".join(lines)
+    return "\\n".join(lines)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
     await update.message.reply_text(
-        "🎬 <b>Movie Bot</b>\n\n"
-        "Send me a video file and I'll look up the movie info on TMDB.\n\n"
-        "<b>Commands:</b>\n"
-        "/search &lt;movie name&gt; - Search for a movie\n"
+        "🎬 <b>Movie Bot</b>\\n\\n"
+        "Send me a video file and I'll look up the movie info on TMDB.\\n\\n"
+        "<b>Commands:</b>\\n"
+        "/search &lt;movie name&gt; - Search for a movie\\n"
         "/help - Show help",
         parse_mode="HTML"
     )
@@ -284,12 +287,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command."""
     await update.message.reply_text(
-        "🎬 <b>Movie Bot Help</b>\n\n"
-        "<b>Send a video</b> - I'll detect the movie and show info + send button.\n\n"
-        "<b>Commands:</b>\n"
-        "/search &lt;movie name&gt; - Search TMDB for movies\n"
-        "/start - Start the bot\n"
-        "/help - Show this help\n\n"
+        "🎬 <b>Movie Bot Help</b>\\n\\n"
+        "<b>Send a video</b> - I'll detect the movie and show info + send button.\\n\\n"
+        "<b>Commands:</b>\\n"
+        "/search &lt;movie name&gt; - Search TMDB for movies\\n"
+        "/start - Start the bot\\n"
+        "/help - Show this help\\n\\n"
         "Example: <code>/search Inception</code>",
         parse_mode="HTML"
     )
@@ -299,8 +302,8 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /search command."""
     if not context.args:
         await update.message.reply_text(
-            "❌ Please provide a movie name.\n\n"
-            "Example: <code>/search Inception</code>\n"
+            "❌ Please provide a movie name.\\n\\n"
+            "Example: <code>/search Inception</code>\\n"
             "Example: <code>/search The Matrix</code>",
             parse_mode="HTML"
         )
@@ -516,7 +519,7 @@ def main():
     try:
         asyncio.run(run_bot())
     except KeyboardInterrupt:
-        print("\nStopping bot...")
+        print("\\nStopping bot...")
         raise SystemExit(0)
     except Conflict:
         print("Telegram polling conflict: another bot instance is already running.")
@@ -528,3 +531,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''
+
+# Save to output
+with open('/mnt/agents/output/bot.py', 'w') as f:
+    f.write(fixed_code)
+
+print("File saved successfully!")
+print(f"File size: {len(fixed_code)} characters")
