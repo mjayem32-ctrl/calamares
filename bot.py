@@ -38,11 +38,12 @@ CHANNEL_ID = "@calamares12"
 
 # Webhook config for Render
 PORT = int(os.environ.get("PORT", 10000))
-WEBHOOK_URL = os.environ.get("https://calamares.onrender.com")  # Set this in Render dashboard
+# FIXED: Read the env var name, not a hardcoded URL. Set WEBHOOK_URL in Render dashboard!
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://calamares.onrender.com")
 
 movies = {}
 file_id_map = {}
-video_metadata_map = {}  # NEW: Store video metadata (width, height, duration, thumbnail)
+video_metadata_map = {}
 NETWORK_WARNING_SHOWN = False
 
 
@@ -377,7 +378,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     movies[short_id] = movie
     file_id_map[short_id] = file_id
     
-    # NEW: Store original video metadata for proper forwarding
+    # Store original video metadata for proper forwarding
     metadata = {
         'width': getattr(video, 'width', None),
         'height': getattr(video, 'height', None),
@@ -439,7 +440,7 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     movie = movies.get(short_id)
     file_id = file_id_map.get(short_id)
-    metadata = video_metadata_map.get(short_id, {})  # NEW: Get stored metadata
+    metadata = video_metadata_map.get(short_id, {})
 
     if movie is None or file_id is None:
         await query.edit_message_caption("This movie is no longer available.")
@@ -471,7 +472,7 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'chat_id': CHANNEL_ID,
             'video': file_id,
             'caption': f"🎥 {movie.get('title', 'Unknown')}",
-            'supports_streaming': True,           # KEY: Makes it playable/streamable
+            'supports_streaming': True,
         }
 
         # Use original video dimensions if available
@@ -513,7 +514,7 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Clean up all stored data
     movies.pop(short_id, None)
     file_id_map.pop(short_id, None)
-    video_metadata_map.pop(short_id, None)  # NEW: Clean up metadata too
+    video_metadata_map.pop(short_id, None)
 
     await query.edit_message_caption("Movie sent successfully.")
 
@@ -604,6 +605,10 @@ async def run_polling():
 
 
 def main():
+    print(f"PORT env: {os.environ.get('PORT', 'NOT SET')}")
+    print(f"WEBHOOK_URL env: {os.environ.get('WEBHOOK_URL', 'NOT SET')}")
+    print(f"Resolved WEBHOOK_URL: {WEBHOOK_URL}")
+    
     # Auto-detect: Webhook for Render, Polling for local
     if WEBHOOK_URL:
         print(f"Starting in WEBHOOK mode...")
