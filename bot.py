@@ -23,7 +23,6 @@ if "--check-env" in sys.argv:
     print(sys.executable)
     raise SystemExit(0)
 
-import asyncio
 import httpx
 import requests
 from requests import RequestException
@@ -465,6 +464,7 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_caption("Movie sent successfully.")
 
 
+# FIX: Removed HTTPXRequest import and custom request - use default for v21+
 app = (
     Application.builder()
     .token(BOT_TOKEN)
@@ -492,16 +492,13 @@ print("Bot running...")
 print("The bot is now listening for video uploads and channel-send actions.")
 
 
-# FIX: Use asyncio.run() for Python 3.14 compatibility
 def main():
     try:
-        asyncio.run(
-            app.run_polling(
-                poll_interval=1.0,
-                timeout=30,
-                bootstrap_retries=1,
-                drop_pending_updates=True,
-            )
+        app.run_polling(
+            poll_interval=1.0,
+            timeout=30,
+            bootstrap_retries=1,
+            drop_pending_updates=True,
         )
     except KeyboardInterrupt:
         print("\nStopping bot...")
