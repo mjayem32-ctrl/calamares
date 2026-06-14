@@ -30,6 +30,7 @@ from requests import RequestException
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from aiohttp import web
 
 BOT_TOKEN = "8827992749:AAHDaTfg4j3YYl2tLKlY3UtzCAeApMq7ing"
 TMDB_API_KEY = "e866bf0ee2ed248272cd10e04ce40bbc"
@@ -493,6 +494,22 @@ print("Bot running...")
 print("The bot is now listening for video uploads and channel-send actions.")
 
 
+async def health_check(request):
+    """Render health check endpoint."""
+    return web.Response(text="Bot is running")
+
+
+async def run_web_server():
+    """Run a minimal web server for Render health checks."""
+    server = web.Application()
+    server.router.add_get('/', health_check)
+    runner = web.AppRunner(server)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get('PORT', 10000)))
+    await site.start()
+    print(f"Health check server running on port {site._port}")
+
+
 async def run_bot():
     """Run the bot with manual async lifecycle management for Python 3.14 compatibility."""
     await app.initialize()
@@ -505,6 +522,9 @@ async def run_bot():
         bootstrap_retries=1,
         drop_pending_updates=True,
     )
+    
+    # Start dummy web server for Render health checks
+    await run_web_server()
     
     # Keep the bot running until interrupted
     print("Bot is running. Press Ctrl+C to stop.")
