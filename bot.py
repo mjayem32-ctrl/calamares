@@ -42,6 +42,7 @@ WEBHOOK_URL = os.environ.get("https://calamares.onrender.com")  # Set this in Re
 
 movies = {}
 file_id_map = {}
+video_metadata_map = {}  # NEW: Store video metadata (width, height, duration, thumbnail)
 NETWORK_WARNING_SHOWN = False
 
 
@@ -375,7 +376,18 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     short_id = str(uuid.uuid4())[:8]
     movies[short_id] = movie
     file_id_map[short_id] = file_id
-    print(f"Short ID: {short_id}")
+    
+    # NEW: Store original video metadata for proper forwarding
+    metadata = {
+        'width': getattr(video, 'width', None),
+        'height': getattr(video, 'height', None),
+        'duration': getattr(video, 'duration', None),
+        'thumbnail': getattr(video, 'thumbnail', None),
+        'mime_type': getattr(video, 'mime_type', None),
+        'file_name': filename,
+    }
+    video_metadata_map[short_id] = metadata
+    print(f"Stored metadata: {metadata}")
 
     detailed = get_movie_details(movie.get('id'))
     if detailed:
@@ -427,6 +439,7 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     movie = movies.get(short_id)
     file_id = file_id_map.get(short_id)
+    metadata = video_metadata_map.get(short_id, {})  # NEW: Get stored metadata
 
     if movie is None or file_id is None:
         await query.edit_message_caption("This movie is no longer available.")
@@ -453,16 +466,43 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML",
             )
 
-        # Send video as STREAMING video (playable, not file)
-        await context.bot.send_video(
-            chat_id=CHANNEL_ID,
-            video=file_id,
-            caption=f"🎥 {movie.get('title', 'Unknown')}",
-            supports_streaming=True,           # KEY: Makes it playable/streamable
-            width=1920,                          # Helps Telegram render properly
-            height=1080,                         # Helps Telegram render properly
-            thumbnail=poster,                    # Uses movie poster as thumbnail
-        )
+        # Build video send kwargs with metadata from original upload
+        video_kwargs = {
+            'chat_id': CHANNEL_ID,
+            'video': file_id,
+            'caption': f"🎥 {movie.get('title', 'Unknown')}",
+            'supports_streaming': True,           # KEY: Makes it playable/streamable
+        }
+
+        # Use original video dimensions if available
+        width = metadata.get('width')
+        height = metadata.get('height')
+        duration = metadata.get('duration')
+        thumb = metadata.get('thumbnail')
+
+        if width:
+            video_kwargs['width'] = width
+        else:
+            video_kwargs['width'] = 1920
+
+        if height:
+            video_kwargs['height'] = height
+        else:
+            video_kwargs['height'] = 1080
+
+        if duration:
+            video_kwargs['duration'] = duration
+
+        # Use original thumbnail if available, otherwise use movie poster
+        if thumb and hasattr(thumb, 'file_id'):
+            video_kwargs['thumbnail'] = thumb.file_id
+        elif poster:
+            video_kwargs['thumbnail'] = poster
+
+        print(f"Sending video with params: {video_kwargs}")
+
+        await context.bot.send_video(**video_kwargs)
+
     except (NetworkError, httpx.RequestError, httpx.ConnectError) as exc:
         print(f"Telegram send failed: {exc}")
         await query.edit_message_caption(
@@ -470,8 +510,10 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Clean up all stored data
     movies.pop(short_id, None)
     file_id_map.pop(short_id, None)
+    video_metadata_map.pop(short_id, None)  # NEW: Clean up metadata too
 
     await query.edit_message_caption("Movie sent successfully.")
 
