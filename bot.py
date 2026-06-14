@@ -24,6 +24,7 @@ if "--check-env" in sys.argv:
     raise SystemExit(0)
 
 import asyncio
+import time
 import httpx
 import requests
 from requests import RequestException
@@ -34,6 +35,11 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 BOT_TOKEN = "8827992749:AAHDaTfg4j3YYl2tLKlY3UtzCAeApMq7ing"
 TMDB_API_KEY = "e866bf0ee2ed248272cd10e04ce40bbc"
 CHANNEL_ID = "@calamares12"
+
+# FIX: Correct webhook config - use env var name or auto-detect Render URL
+PORT = int(os.environ.get("PORT", 10000))
+RENDER_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL") or (f"https://{RENDER_HOST}" if RENDER_HOST else None)
 
 movies = {}
 file_id_map = {}
@@ -54,7 +60,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
     if isinstance(error, Conflict):
         print("Telegram polling conflict: another bot instance is already running.")
-        raise SystemExit(1)
+        return
 
     if isinstance(error, BadRequest):
         print(f"Telegram API BadRequest: {error}")
@@ -358,16 +364,22 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     video = message.video
     
     if video is None:
-        await message.reply_text(
-            "❌ <b>Please send as a VIDEO, not as a FILE!</b>\n\n"
-            "📎 Tap attach → <b>Gallery</b> or <b>Video</b>\n"
-            "Do NOT use <b>File</b> option.\n\n"
-            "When you send as File, Telegram treats it as a document and it cannot be played as a video in the channel.",
-            parse_mode="HTML"
-        )
-        return
+        # If user sent as file/document, reject it
+        if message.document:
+            await message.reply_text(
+                "❌ <b>You sent this as a FILE, not as a VIDEO!</b>\n\n"
+                "Please send again using:\n"
+                "📎 <b>Gallery</b> or <b>Video</b> option\n\n"
+                "Not 📎 <b>File</b> option.\n\n"
+                "When sent as File, Telegram cannot play it as a video in the channel.",
+                parse_mode="HTML"
+            )
+            return
+        else:
+            await message.reply_text("Please send a video file.")
+            return
 
-    # Get filename from video (may be None for direct video uploads)
+    # Get filename from video
     filename = video.file_name or "video.mp4"
     title = os.path.splitext(filename)[0]
     print(f"Processing video: {filename}, searching TMDB for: {title}")
@@ -524,8 +536,40 @@ print("Bot running...")
 print("The bot is now listening for video uploads and channel-send actions.")
 
 
-async def run_bot():
-    """Run the bot with manual async lifecycle management for Python 3.14 compatibility."""
+# =============================================================================
+# WEBHOOK MODE (Recommended for Render)
+# =============================================================================
+async def run_webhook():
+    """Run bot with webhook for Render deployment."""
+    await app.initialize()
+    await app.start()
+    
+    await app.updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=WEBHOOK_URL,
+    )
+    
+    print(f"✅ Webhook running on port {PORT}")
+    print(f"🔗 Webhook URL: {WEBHOOK_URL}")
+    
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        print("Shutting down webhook...")
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+
+
+# =============================================================================
+# POLLING MODE (Local development)
+# =============================================================================
+async def run_polling():
+    """Run bot with polling for local development."""
     await app.initialize()
     await app.start()
     
@@ -536,23 +580,53 @@ async def run_bot():
         drop_pending_updates=True,
     )
     
-    print("Bot is running. Press Ctrl+C to stop.")
-    while True:
-        await asyncio.sleep(3600)
+    print("✅ Bot is polling. Press Ctrl+C to stop.")
+    
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        print("Shutting down polling...")
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
 
 def main():
-    try:
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        print("\nStopping bot...")
-        raise SystemExit(0)
-    except Conflict:
-        print("Telegram polling conflict: another bot instance is already running.")
-        raise SystemExit(1)
-    except NetworkError as exc:
-        print(f"Telegram connection failed: {exc}")
-        raise SystemExit(1)
+    # Auto-detect: Webhook for Render, Polling for local
+    if WEBHOOK_URL:
+        print(f"Starting in WEBHOOK mode...")
+        try:
+            asyncio.run(run_webhook())
+        except KeyboardInterrupt:
+            print("\nStopping bot...")
+            raise SystemExit(0)
+        except Exception as exc:
+            print(f"Webhook error: {exc}")
+            raise SystemExit(1)
+    else:
+        print(f"Starting in POLLING mode...")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                asyncio.run(run_polling())
+                break
+            except Conflict:
+                print(f"Conflict error (attempt {attempt + 1}/{max_retries}): Another bot instance is running.")
+                if attempt < max_retries - 1:
+                    print("Waiting 10 seconds before retry...")
+                    time.sleep(10)
+                else:
+                    print("Max retries reached. Exiting.")
+                    raise SystemExit(1)
+            except KeyboardInterrupt:
+                print("\nStopping bot...")
+                raise SystemExit(0)
+            except NetworkError as exc:
+                print(f"Telegram connection failed: {exc}")
+                raise SystemExit(1)
 
 
 if __name__ == "__main__":
