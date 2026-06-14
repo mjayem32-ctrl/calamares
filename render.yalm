@@ -1,0 +1,13 @@
+services:
+  - type: worker
+    name: movie-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 8827992749:AAHDaTfg4j3YYl2tLKlY3UtzCAeApMq7ing
+      - key: TMDB_API_KEY
+        value: e866bf0ee2ed248272cd10e04ce40bbc
+      - key: CHANNEL_ID
+        value: "@calamares12"
