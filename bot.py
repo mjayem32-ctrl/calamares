@@ -470,7 +470,6 @@ request = HTTPXRequest(
     read_timeout=30,
     write_timeout=30,
     pool_timeout=30,
-    httpx_kwargs={"trust_env": False},
     proxy=None,
 )
 
