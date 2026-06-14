@@ -1,7 +1,6 @@
 import os
 import sys
 import uuid
-import asyncio
 
 
 def ensure_project_python():
@@ -24,13 +23,13 @@ if "--check-env" in sys.argv:
     print(sys.executable)
     raise SystemExit(0)
 
+import asyncio
 import httpx
 import requests
 from requests import RequestException
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
-from aiohttp import web
 
 BOT_TOKEN = "8827992749:AAHDaTfg4j3YYl2tLKlY3UtzCAeApMq7ing"
 TMDB_API_KEY = "e866bf0ee2ed248272cd10e04ce40bbc"
@@ -274,7 +273,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
     await update.message.reply_text(
         "🎬 <b>Movie Bot</b>\n\n"
-        "Send me a video file and I'll look up the movie info on TMDB.\n\n"
+        "Send me a <b>video</b> (not as file) and I'll look up the movie info on TMDB.\n\n"
+        "✅ <b>How to send:</b>\n"
+        "• Tap 📎 → <b>Gallery</b> or <b>Video</b>\n"
+        "• Do NOT use <b>File</b> option\n\n"
         "<b>Commands:</b>\n"
         "/search &lt;movie name&gt; - Search for a movie\n"
         "/help - Show help",
@@ -287,6 +289,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎬 <b>Movie Bot Help</b>\n\n"
         "<b>Send a video</b> - I'll detect the movie and show info + send button.\n\n"
+        "⚠️ <b>IMPORTANT:</b> Send as <b>VIDEO</b> not as <b>FILE</b>!\n\n"
+        "Correct way:\n"
+        "📎 → Gallery → Select video\n\n"
+        "Wrong way:\n"
+        "📎 → File → Select .mp4 (sends as document)\n\n"
         "<b>Commands:</b>\n"
         "/search &lt;movie name&gt; - Search TMDB for movies\n"
         "/start - Start the bot\n"
@@ -345,12 +352,23 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if message is None:
         return
 
-    video = message.video or message.document
-    if video is None or video.file_name is None:
-        await message.reply_text("Please send a video file.")
+    # =============================================================================
+    # FIX: Only accept actual video messages (NOT documents/files)
+    # =============================================================================
+    video = message.video
+    
+    if video is None:
+        await message.reply_text(
+            "❌ <b>Please send as a VIDEO, not as a FILE!</b>\n\n"
+            "📎 Tap attach → <b>Gallery</b> or <b>Video</b>\n"
+            "Do NOT use <b>File</b> option.\n\n"
+            "When you send as File, Telegram treats it as a document and it cannot be played as a video in the channel.",
+            parse_mode="HTML"
+        )
         return
 
-    filename = video.file_name
+    # Get filename from video (may be None for direct video uploads)
+    filename = video.file_name or "video.mp4"
     title = os.path.splitext(filename)[0]
     print(f"Processing video: {filename}, searching TMDB for: {title}")
 
@@ -358,11 +376,15 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"TMDB result: {movie is not None}")
 
     if not movie:
-        await message.reply_text("Movie not found.")
+        await message.reply_text(
+            f"❌ Movie not found for: <b>{title}</b>\n\n"
+            f"Try using <code>/search {title}</code> instead.",
+            parse_mode="HTML"
+        )
         return
 
     file_id = video.file_id
-    print(f"File ID length: {len(file_id)} chars")
+    print(f"File ID: {file_id[:30]}... (video type)")
 
     if file_id is None:
         await message.reply_text("This video cannot be sent right now.")
@@ -434,6 +456,7 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = format_movie_caption(movie, detailed=True)
 
     try:
+        # Send poster first
         if poster:
             await context.bot.send_photo(
                 chat_id=CHANNEL_ID,
@@ -448,11 +471,18 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML",
             )
 
+        # =============================================================================
+        # FIX: Send video with streaming support so it plays in channel
+        # =============================================================================
         await context.bot.send_video(
             chat_id=CHANNEL_ID,
             video=file_id,
             caption=f"🎥 {movie.get('title', 'Unknown')}",
+            supports_streaming=True,  # Allows streaming without full download
+            width=1920,  # Optional: helps Telegram recognize as video
+            height=1080,  # Optional: helps Telegram recognize as video
         )
+        print("Video sent successfully as video player")
     except (NetworkError, httpx.RequestError, httpx.ConnectError) as exc:
         print(f"Telegram send failed: {exc}")
         await query.edit_message_caption(
@@ -466,7 +496,6 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_caption("Movie sent successfully.")
 
 
-# FIX: Removed HTTPXRequest import and custom request - use default for v21+
 app = (
     Application.builder()
     .token(BOT_TOKEN)
@@ -477,9 +506,10 @@ app.add_handler(CommandHandler("start", start_command))
 app.add_handler(CommandHandler("help", help_command))
 app.add_handler(CommandHandler("search", search_command))
 
+# FIX: Only accept VIDEO messages (not documents/files)
 app.add_handler(
     MessageHandler(
-        filters.VIDEO | filters.Document.VIDEO,
+        filters.VIDEO,
         handle_video
     )
 )
@@ -494,39 +524,18 @@ print("Bot running...")
 print("The bot is now listening for video uploads and channel-send actions.")
 
 
-async def health_check(request):
-    """Render health check endpoint."""
-    return web.Response(text="Bot is running")
-
-
-async def run_web_server():
-    """Run a minimal web server for Render health checks."""
-    server = web.Application()
-    server.router.add_get('/', health_check)
-    runner = web.AppRunner(server)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get('PORT', 10000)))
-    await site.start()
-    print(f"Health check server running on port {site._port}")
-
-
 async def run_bot():
     """Run the bot with manual async lifecycle management for Python 3.14 compatibility."""
     await app.initialize()
     await app.start()
     
-    # Start polling
     await app.updater.start_polling(
         poll_interval=1.0,
         timeout=30,
-        bootstrap_retries=1,
+        bootstrap_retries=5,
         drop_pending_updates=True,
     )
     
-    # Start dummy web server for Render health checks
-    await run_web_server()
-    
-    # Keep the bot running until interrupted
     print("Bot is running. Press Ctrl+C to stop.")
     while True:
         await asyncio.sleep(3600)
