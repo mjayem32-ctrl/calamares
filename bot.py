@@ -29,7 +29,6 @@ from requests import RequestException
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
-from telegram.request import HTTPXRequest
 
 BOT_TOKEN = "8827992749:AAHDaTfg4j3YYl2tLKlY3UtzCAeApMq7ing"
 TMDB_API_KEY = "e866bf0ee2ed248272cd10e04ce40bbc"
@@ -465,18 +464,10 @@ async def send_to_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_caption("Movie sent successfully.")
 
 
-request = HTTPXRequest(
-    connect_timeout=30,
-    read_timeout=30,
-    write_timeout=30,
-    pool_timeout=30,
-    proxy=None,
-)
-
+# FIX: Removed HTTPXRequest import and custom request - use default for v21+
 app = (
     Application.builder()
     .token(BOT_TOKEN)
-    .request(request)
     .build()
 )
 
